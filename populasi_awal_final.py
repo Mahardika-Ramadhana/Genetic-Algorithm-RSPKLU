@@ -169,6 +169,21 @@ def generate_initial_population(config, pop_size=10, use_spklu=True):
     
     return population
 
+
+    def generate_initial_population_flat(config, pop_size=10, use_spklu=True):
+        """Wrapper: returns delimiter-flat chromosomes by flattening nested routes.
+
+        This preserves the original generator behavior while providing the
+        delimiter-flat format used by the GA modules (e.g. ['D1','C1','D1','|',...]).
+        """
+        from utils import flatten_from_nested
+
+        nested = generate_initial_population(config, pop_size=pop_size, use_spklu=use_spklu)
+        flat_pop = []
+        for chrom in nested:
+            flat_pop.append(flatten_from_nested(chrom))
+        return flat_pop
+
 # ----- MAIN -----
 if __name__ == "__main__":
     print("=" * 80)

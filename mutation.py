@@ -1,6 +1,10 @@
 import random
+import logging
 
-def apply_mutation(chromosome, depot_locations, customer_locations, mutation_probability=0.1, beta=0.2):
+logger = logging.getLogger(__name__)
+
+
+def apply_mutation(chromosome, depot_locations, customer_locations, mutation_probability=0.1, beta=0.2, verbose: bool = False):
     """
     Fungsi memilih antara inter-depot atau intra-depot
     parameter:
@@ -14,10 +18,12 @@ def apply_mutation(chromosome, depot_locations, customer_locations, mutation_pro
     border_customers = find_border_customers(chromosome, depot_locations, customer_locations, beta)
     
     if border_customers and random.random() < 0.7:
-        print("  [MUTASI] Melakukan Inter-Depot Mutation")
+        if verbose:
+            logger.info("[MUTASI] Melakukan Inter-Depot Mutation")
         return inter_depot_mutation(chromosome, border_customers, depot_locations)
     else:
-        print("  [MUTASI] Melakukan Intra-Depot Mutation")
+        if verbose:
+            logger.info("[MUTASI] Melakukan Intra-Depot Mutation")
         return intra_depot_mutation(chromosome)
 
 def find_border_customers(chromosome, depot_locations, customer_locations, beta):
@@ -59,15 +65,15 @@ def inter_depot_mutation(chromosome, border_customers, depot_locations):
     
     if not candidate_depots:
         return chromosome
-    
+
     # Pilih depot tujuan secara random dari candidate depots
     new_depot = random.choice(candidate_depots)
-    
-    print(f"  [INTER-DEPOT] Memindahkan {customer} dari {selected['current_depot']} ke {new_depot}")
-    
+
+    logger.info("[INTER-DEPOT] Memindahkan %s dari %s ke %s", customer, selected['current_depot'], new_depot)
+
     # Lakukan reassignment customer ke depot barucls
     new_chromosome = reassign_customer_to_depot(chromosome, customer, selected['current_depot'], new_depot)
-    
+
     return new_chromosome
 
 def intra_depot_mutation(chromosome):
@@ -94,13 +100,14 @@ def intra_depot_mutation(chromosome):
         # Swap mutation - tukar dua posisi random
         pos1, pos2 = random.sample(range(len(customers)), 2)
         customers[pos1], customers[pos2] = customers[pos2], customers[pos1]
-        print(f"  [INTRA-DEPOT] Swap {customers[pos2]} dan {customers[pos1]} dalam {selected_route['depot']}")
+        logger.info("[INTRA-DEPOT] Swap %s dan %s dalam %s", customers[pos2], customers[pos1], selected_route['depot'])
         
     elif mutation_type == 'inversion' and len(customers) >= 2:
         # Inversion mutation - balik urutan segmen
         start, end = sorted(random.sample(range(len(customers)), 2))
-        customers[start:end+1] = reversed(customers[start:end+1])
-        print(f"  [INTRA-DEPOT] Inversion posisi {start}-{end} dalam {selected_route['depot']}")
+        # reverse slice in place using slicing
+        customers[start:end+1] = customers[start:end+1][::-1]
+        logger.info("[INTRA-DEPOT] Inversion posisi %d-%d dalam %s", start, end, selected_route['depot'])
         
     elif mutation_type == 'insertion' and len(customers) >= 2:
         # Insertion mutation - pindah customer ke posisi lain
@@ -112,7 +119,7 @@ def intra_depot_mutation(chromosome):
             
             customer_moved = customers.pop(from_pos)
             customers.insert(to_pos, customer_moved)
-            print(f"  [INTRA-DEPOT] Insert {customer_moved} dari pos {from_pos} ke {to_pos} dalam {selected_route['depot']}")
+            logger.info("[INTRA-DEPOT] Insert %s dari pos %d ke %d dalam %s", customer_moved, from_pos, to_pos, selected_route['depot'])
     
     # Update full_route
     selected_route['full_route'] = [selected_route['depot']] + customers + [selected_route['depot']]
