@@ -96,8 +96,8 @@ if __name__ == "__main__":
     ]
     
     # Parameter untuk GA
-    [cite_start]ELITE_SIZE = 1       # Jumlah individu terbaik yang langsung dipertahankan [cite: 208]
-    [cite_start]TOURNAMENT_SIZE = 2  # Jumlah individu yang bersaing di setiap turnamen [cite: 205]
+    ELITE_SIZE = 1       # Jumlah individu terbaik yang langsung dipertahankan [cite: 208]
+    TOURNAMENT_SIZE = 2  # Jumlah individu yang bersaing di setiap turnamen [cite: 205]
 
     print("--- POPULASI AWAL & FITNESS ---")
     for i in range(len(DUMMY_POPULATION)):
