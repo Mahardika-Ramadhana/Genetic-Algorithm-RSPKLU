@@ -1,4 +1,5 @@
 import random
+from utlis import euclidean_distance
 
 def apply_mutation(chromosome, depot_locations, customer_locations, mutation_probability=0.1, beta=0.2):
     """
@@ -294,7 +295,8 @@ def euclidean_distance(coord1, coord2):
     """
     Menghitung Euclidean distance antara dua koordinat
     """
-    return ((coord1[0] - coord2[0])**2 + (coord1[1] - coord2[1])**2)**0.5
+    # This function is now provided by utlis.euclidean_distance. Keep wrapper for backward compatibility.
+    return euclidean_distance(coord1, coord2)
 
 # ===== CONTOH PENGGUNAAN =====
 

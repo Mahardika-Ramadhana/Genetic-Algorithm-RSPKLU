@@ -22,23 +22,33 @@ def run_tournament(population, fitness_scores, tournament_size):
     Memilih 'tournament_size' individu secara acak dan mengembalikan
     yang terbaik (skor fitness terendah) dari kelompok tersebut.
     """
-    # Pilih indeks secara acak untuk turnamen
-    tournament_indices = random.sample(range(len(population)), tournament_size)
-    
+    # Defensive guards
+    n = len(population)
+    if n == 0:
+        return None
+    if len(fitness_scores) != n:
+        raise ValueError("population and fitness_scores must have same length")
+
+    # Pilih indeks untuk turnamen. Jika tournament_size > n kita sampling dengan replacement
+    if tournament_size <= n:
+        tournament_indices = random.sample(range(n), tournament_size)
+    else:
+        tournament_indices = random.choices(range(n), k=tournament_size)
+
     # Siapkan variabel untuk melacak pemenang
     best_individual = None
-    best_fitness = float('inf')  # 'inf' karena kita mencari nilai minimum
+    best_fitness = float('inf')  # mencari nilai minimum
 
     # Loop melalui peserta turnamen
     for index in tournament_indices:
         individual = population[index]
         fitness = fitness_scores[index]
-        
+
         # Jika individu ini lebih baik dari pemenang saat ini, jadikan dia pemenang
         if fitness < best_fitness:
             best_fitness = fitness
             best_individual = individual
-            
+
     return best_individual
 
 # --- FUNGSI UTAMA SELECTION ---
@@ -56,21 +66,30 @@ def selection(population, fitness_scores, elite_size, tournament_size):
     Returns:
         list: Daftar orang tua baru yang terpilih (new_parents).
     """
+    # Validate inputs
+    if not population:
+        return []
+    if len(fitness_scores) != len(population):
+        raise ValueError("population and fitness_scores must have same length")
+
+    # Clamp elite_size
+    elite_size = max(0, min(elite_size, len(population)))
+
     new_parents = []
-    
-    # [cite_start]1. Elitism: Pertahankan individu terbaik secara langsung [cite: 208, 211]
-    # Fungsi ini mengambil 'elite_size' individu terbaik
+
+    # 1. Elitism
     elites = get_elites(population, fitness_scores, elite_size)
     new_parents.extend(elites)
-    
-    # [cite_start]2. Tournament Selection: Isi sisa populasi [cite: 203, 211]
-    # Kita perlu memilih 'len(population) - elite_size' individu lagi
+
+    # 2. Tournament Selection for remaining slots
     num_to_select = len(population) - elite_size
     for _ in range(num_to_select):
-        # Jalankan turnamen untuk memilih satu orang tua
         parent = run_tournament(population, fitness_scores, tournament_size)
+        if parent is None:
+            # Should not happen because we validated population non-empty, but guard anyway
+            continue
         new_parents.append(parent)
-        
+
     return new_parents
 
 # --- CONTOH PENGGUNAAN ---
