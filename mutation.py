@@ -291,13 +291,6 @@ def reassign_customer_to_depot(chromosome, customer, old_depot, new_depot):
     
     return new_chromosome
 
-def euclidean_distance(coord1, coord2):
-    """
-    Menghitung Euclidean distance antara dua koordinat
-    """
-    # This function is now provided by utlis.euclidean_distance. Keep wrapper for backward compatibility.
-    return euclidean_distance(coord1, coord2)
-
 # ===== CONTOH PENGGUNAAN =====
 
 if __name__ == "__main__":

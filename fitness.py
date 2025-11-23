@@ -1,85 +1,99 @@
 def fitness_function(chromosome, distance_matrix=None, node_coords=None,
 					 battery_capacity=100, consumption_rate=1.0, charging_rate=1.0,
-					 w1=0.6, w2=0.4):
-	"""Compute fitness for a chromosome.
-
-	Parameters
-	- chromosome: list of genes with '|' separators between routes
-	- distance_matrix: optional dict of pairwise distances
-	- node_coords: optional dict {index: (x,y)} if distance_matrix not provided
-
-	Returns: lower is better
+					 w1=0.6, w2=0.4, stations=None):
+	"""
+	Compute fitness untuk chromosome dengan simplified charging logic.
+	Jika battery tidak cukup, langsung return penalty (tidak coba charging di tengah jalan).
 	"""
 	total_distance = 0.0
 	total_charging_time = 0.0
-	invalid_penalty = 1e6
+	invalid_penalty = 1e9
 
-	# helper to get distance
-	def get_dist(a, b):
-		if distance_matrix:
-			if (a, b) in distance_matrix:
-				return distance_matrix[(a, b)]
-			if (b, a) in distance_matrix:
-				return distance_matrix[(b, a)]
-		if node_coords and a in node_coords and b in node_coords:
-			ax, ay = node_coords[a]
-			bx, by = node_coords[b]
-			return ((ax - bx) ** 2 + (ay - by) ** 2) ** 0.5
+	def extract_id(node_str):
+		"""Extract integer ID dari string seperti 'D1', 'C5', 'S3'."""
+		try:
+			return int(node_str[1:])
+		except (ValueError, IndexError):
+			return None
+
+	def get_distance(a, b):
+		"""Get distance antara node a dan b menggunakan distance_matrix."""
+		id_a = extract_id(a) if isinstance(a, str) else a
+		id_b = extract_id(b) if isinstance(b, str) else b
+		
+		if id_a is None or id_b is None:
+			return 0.0
+		
+		if distance_matrix is not None:
+			if (id_a, id_b) in distance_matrix:
+				return distance_matrix[(id_a, id_b)]
+			elif (id_b, id_a) in distance_matrix:
+				return distance_matrix[(id_b, id_a)]
+		
+		if node_coords is not None:
+			if id_a in node_coords and id_b in node_coords:
+				ax, ay = node_coords[id_a]
+				bx, by = node_coords[id_b]
+				return ((ax - bx) ** 2 + (ay - by) ** 2) ** 0.5
+		
 		return 0.0
 
-	# Support two chromosome formats:
-	# 1) flat list with '|' separators (e.g., ['D1','C1','D1','|','D2','C2','D2'])
-	# 2) list of routes where each route is a list of node indices (e.g., [[1,2,3],[4,5,6]])
+	# Parse chromosome menjadi routes
 	routes = []
-	if chromosome and isinstance(chromosome[0], (list, tuple)):
-		# already a list of routes (nodes may be ints)
-		routes = [list(route) for route in chromosome]
-		# Simple distance-only simulation (no charging logic for numeric ids)
-		for route in routes:
-			for i in range(len(route) - 1):
-				a, b = route[i], route[i+1]
-				dist = get_dist(a, b)
-				total_distance += dist
-	else:
-		# flat representation with '|' separators
-		current = []
-		for gene in chromosome:
-			if gene == '|':
-				if current:
-					routes.append(current)
-					current = []
-			else:
-				current.append(gene)
-		if current:
-			routes.append(current)
+	current_route = []
+	for gene in chromosome:
+		if gene == '|':
+			if current_route:
+				routes.append(current_route)
+			current_route = []
+		else:
+			current_route.append(gene)
+	
+	if current_route:
+		routes.append(current_route)
 
-		for route in routes:
-			battery = battery_capacity
-			for i in range(len(route) - 1):
-				a, b = route[i], route[i+1]
-				dist = get_dist(a, b)
-				total_distance += dist
-				needed_energy = dist * consumption_rate
+	# Count customers per route (untuk penalty single-customer routes)
+	total_penalty = 0.0
+	for route in routes:
+		# Count actual customers (exclude depot and stations)
+		customer_count = sum(1 for node in route if isinstance(node, str) and node.startswith('C'))
+		# Penalize single-customer routes dengan 0.5 penalty per route
+		if customer_count == 1:
+			total_penalty += 0.5
 
-				# handle charging station (gene contains 'S')
-				if isinstance(a, str) and 'S' in a:
-					energy_needed_to_next = 0.0
-					for j in range(i, len(route) - 1):
-						u, v = route[j], route[j+1]
-						energy_needed_to_next += get_dist(u, v) * consumption_rate
-						if isinstance(v, str) and ('S' in v or 'D' in v):
-							break
-					required_energy = max(0.0, energy_needed_to_next - battery)
-					charge_time = required_energy / charging_rate if charging_rate > 0 else 0.0
-					total_charging_time += charge_time
-					battery = min(battery + required_energy, battery_capacity)
-
-				if battery < needed_energy:
-					return invalid_penalty
-				battery -= needed_energy
-
+	# Evaluasi setiap route
+	for route in routes:
+		if len(route) < 2:
+			continue
+		
+		battery = battery_capacity
+		
+		# Traverse route sederhana: jika battery habis, return penalty
+		for i in range(len(route) - 1):
+			current_node = route[i]
+			next_node = route[i + 1]
+			
+			# Skip jika station (tidak consume energy)
+			if isinstance(next_node, str) and next_node.startswith('S'):
+				# Charging station - full charge battery
+				battery = battery_capacity
+				continue
+			
+			dist = get_distance(current_node, next_node)
+			energy_needed = dist * consumption_rate
+			total_distance += dist
+			
+			# Cek battery cukup
+			if battery < energy_needed:
+				# Tidak cukup battery, return penalty
+				return invalid_penalty
+			
+			battery -= energy_needed
+	
+	# Hitung fitness
 	D = total_distance / 100.0
 	C = total_charging_time / 100.0
-	fitness = w1 * D + w2 * C
+	fitness = w1 * D + w2 * C + total_penalty
+	
 	return fitness
 

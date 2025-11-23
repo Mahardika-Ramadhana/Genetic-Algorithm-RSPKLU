@@ -101,67 +101,106 @@ def parse_evrp_file(filepath):
 
 
 def generate_initial_chromosome(evrp_data):
-    """Bangkitkan satu kromosom awal dengan format: ['D1', 'C1', 'C2', '|', 'D1', 'C3', 'C4', ...]"""
+    """
+    Bangkitkan satu kromosom awal dengan format: ['D1', 'C1', 'C2', '|', 'D1', 'C3', 'C4', ...]
+    PENTING: Setiap vehicle HARUS mendapat AT LEAST 2+ customers untuk menghindari single-customer routes
+    Exception: jika total customers < 2*vehicles, maka beberapa vehicle dapat <2 customers
+    """
     depot = evrp_data['depot']
     customers = evrp_data['customers'][:]
     vehicles = evrp_data['vehicles']
+    stations = evrp_data['stations']
     
     random.shuffle(customers)
     chromosome = []
     
-    # Jika hanya satu depot
+    # Strategy: Distribute customers untuk minimize single-customer routes
+    # Target: setiap vehicle dapat minimal 2 customers jika possible
+    num_customers = len(customers)
+    
+    # Calculate how many vehicles actually get customers
+    if num_customers >= 2 * vehicles:
+        # Cukup customers untuk 2+ per vehicle
+        num_vehicles_with_customers = vehicles
+        min_customers_per_vehicle = 2
+    elif num_customers >= vehicles:
+        # Cukup untuk >=1 per vehicle, aim untuk 1-2
+        num_vehicles_with_customers = min(vehicles, num_customers)
+        min_customers_per_vehicle = 1
+    else:
+        # Customers lebih sedikit dari vehicles
+        num_vehicles_with_customers = num_customers
+        min_customers_per_vehicle = 1
+    
+    # Balanced distribution
+    customers_per_vehicle = num_customers // num_vehicles_with_customers if num_vehicles_with_customers > 0 else 0
+    remainder = num_customers % num_vehicles_with_customers if num_vehicles_with_customers > 0 else 0
+    
     if len(depot) == 1:
         depot_node = depot[0]
-        customers_per_vehicle = len(customers) // vehicles
         
+        vehicle_customers = []
+        customer_idx = 0
+        
+        # Distribute customers
+        for v in range(num_vehicles_with_customers):
+            count = customers_per_vehicle + (1 if v < remainder else 0)
+            vehicle_customers.append(customers[customer_idx:customer_idx + count])
+            customer_idx += count
+        
+        # Vehicles tanpa customers (empty)
+        for v in range(num_vehicles_with_customers, vehicles):
+            vehicle_customers.append([])
+        
+        # Build chromosome
         for v in range(vehicles):
             chromosome.append(f'D{depot_node}')
             
-            # Assign customer ke vehicle ini
-            start_idx = v * customers_per_vehicle
-            if v == vehicles - 1:
-                # Vehicle terakhir dapat sisa customer
-                end_idx = len(customers)
-            else:
-                end_idx = (v + 1) * customers_per_vehicle
-            
-            route_customers = customers[start_idx:end_idx]
-            for c in route_customers:
+            # Add customers untuk vehicle ini
+            for c in vehicle_customers[v]:
                 chromosome.append(f'C{c}')
+                # Add charging station dengan probabilitas 10% per customer (reduced dari 15%)
+                if random.random() < 0.10 and stations:
+                    random_station = random.choice(stations)
+                    chromosome.append(f'S{random_station}')
             
+            # Add return ke depot
             chromosome.append(f'D{depot_node}')
             
-            # Tambah separator kecuali untuk vehicle terakhir
+            # Add separator kecuali vehicle terakhir
             if v < vehicles - 1:
                 chromosome.append('|')
     
-    # Jika multi-depot
+    # Multi-depot case
     else:
-        customers_per_vehicle = len(customers) // vehicles
         depot_assignment = []
-        
-        # Assign depot ke setiap vehicle secara round-robin
         for v in range(vehicles):
             depot_assignment.append(depot[v % len(depot)])
         
+        vehicle_customers = []
+        customer_idx = 0
+        
+        for v in range(num_vehicles_with_customers):
+            count = customers_per_vehicle + (1 if v < remainder else 0)
+            vehicle_customers.append(customers[customer_idx:customer_idx + count])
+            customer_idx += count
+        
+        for v in range(num_vehicles_with_customers, vehicles):
+            vehicle_customers.append([])
+        
+        # Build chromosome
         for v in range(vehicles):
             depot_node = depot_assignment[v]
             chromosome.append(f'D{depot_node}')
             
-            # Assign customer ke vehicle ini
-            start_idx = v * customers_per_vehicle
-            if v == vehicles - 1:
-                end_idx = len(customers)
-            else:
-                end_idx = (v + 1) * customers_per_vehicle
-            
-            route_customers = customers[start_idx:end_idx]
-            for c in route_customers:
+            for c in vehicle_customers[v]:
                 chromosome.append(f'C{c}')
+                if random.random() < 0.10 and stations:
+                    random_station = random.choice(stations)
+                    chromosome.append(f'S{random_station}')
             
             chromosome.append(f'D{depot_node}')
             
-            # Tambah separator kecuali untuk vehicle terakhir
             if v < vehicles - 1:
                 chromosome.append('|')
     
