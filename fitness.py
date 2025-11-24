@@ -1,4 +1,4 @@
-def fitness_function(chromosome, distance_matrix=None, node_coords=None,
+def fitness_function(chromosome, distance_matrix,
 					 battery_capacity=100, consumption_rate=1.0, charging_rate=1.0,
 					 w1=0.6, w2=0.4):
 	"""Compute fitness for a chromosome.
@@ -13,20 +13,21 @@ def fitness_function(chromosome, distance_matrix=None, node_coords=None,
 	total_distance = 0.0
 	total_charging_time = 0.0
 	invalid_penalty = 1e6
-
+	for idx in range(len(chromosome)):
+		gene = chromosome[idx]
+		if isinstance(gene, str):
+			if gene.startswith('D'):
+				chromosome[idx] = int(gene[1:])  # depot
+			elif gene.startswith('C'):
+				chromosome[idx] = int(gene[1:])  # customer
+			elif gene.startswith('S'):
+				chromosome[idx] = int(gene[1:])  # station
+	print(chromosome)
 	# helper to get distance
 	def get_dist(a, b):
-		if distance_matrix:
-			if (a, b) in distance_matrix:
-				return distance_matrix[(a, b)]
-			if (b, a) in distance_matrix:
-				return distance_matrix[(b, a)]
-		if node_coords and a in node_coords and b in node_coords:
-			ax, ay = node_coords[a]
-			bx, by = node_coords[b]
-			return ((ax - bx) ** 2 + (ay - by) ** 2) ** 0.5
-		return 0.0
-
+		return distance_matrix[a][b]
+		
+	
 	# Support two chromosome formats:
 	# 1) flat list with '|' separators (e.g., ['D1','C1','D1','|','D2','C2','D2'])
 	# 2) list of routes where each route is a list of node indices (e.g., [[1,2,3],[4,5,6]])
@@ -52,7 +53,7 @@ def fitness_function(chromosome, distance_matrix=None, node_coords=None,
 				current.append(gene)
 		if current:
 			routes.append(current)
-
+		
 		for route in routes:
 			battery = battery_capacity
 			for i in range(len(route) - 1):

@@ -100,70 +100,153 @@ def parse_evrp_file(filepath):
     }
 
 
+def calculate_distance(coords, node1, node2):
+    """Calculate Euclidean distance between two nodes."""
+    x1, y1 = coords[node1]
+    x2, y2 = coords[node2]
+    return ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
+
+
+def find_nearest_station(coords, current_node, stations):
+    """Find the nearest charging station to the current node."""
+    min_dist = float('inf')
+    nearest_station = None
+    
+    for station in stations:
+        dist = calculate_distance(coords, current_node, station)
+        if dist < min_dist:
+            min_dist = dist
+            nearest_station = station
+    
+    return nearest_station
+
+
 def generate_initial_chromosome(evrp_data):
-    """Bangkitkan satu kromosom awal dengan format: ['D1', 'C1', 'C2', '|', 'D1', 'C3', 'C4', ...]"""
+    """Bangkitkan satu kromosom awal dengan format: [1, 2, 3, 1, '|', 31, 4, 5, 31, ...]
+    dengan mempertimbangkan energy capacity dan menambahkan charging stations jika diperlukan."""
     depot = evrp_data['depot']
     customers = evrp_data['customers'][:]
     vehicles = evrp_data['vehicles']
+    energy_capacity = evrp_data['energy_capacity']
+    coords = evrp_data['coords']
+    stations = evrp_data['stations']
+    consumption_rate = 1.0  # Energy consumed per unit distance
     
     random.shuffle(customers)
     chromosome = []
     
-    # Jika hanya satu depot
-    if len(depot) == 1:
-        depot_node = depot[0]
-        customers_per_vehicle = len(customers) // vehicles
-        
-        for v in range(vehicles):
-            chromosome.append(f'D{depot_node}')
-            
-            # Assign customer ke vehicle ini
-            start_idx = v * customers_per_vehicle
-            if v == vehicles - 1:
-                # Vehicle terakhir dapat sisa customer
-                end_idx = len(customers)
-            else:
-                end_idx = (v + 1) * customers_per_vehicle
-            
-            route_customers = customers[start_idx:end_idx]
-            for c in route_customers:
-                chromosome.append(f'C{c}')
-            
-            chromosome.append(f'D{depot_node}')
-            
-            # Tambah separator kecuali untuk vehicle terakhir
-            if v < vehicles - 1:
-                chromosome.append('|')
+    # Multi-depot setup
+    customers_per_vehicle = len(customers) // vehicles
+    depot_assignment = []
     
-    # Jika multi-depot
-    else:
-        customers_per_vehicle = len(customers) // vehicles
-        depot_assignment = []
+    # Assign depot ke setiap vehicle secara round-robin
+    for v in range(vehicles):
+        depot_assignment.append(depot[v % len(depot)])
+    
+    for v in range(vehicles):
+        depot_node = depot_assignment[v]
+        route = [depot_node]
         
-        # Assign depot ke setiap vehicle secara round-robin
-        for v in range(vehicles):
-            depot_assignment.append(depot[v % len(depot)])
+        # Assign customer ke vehicle ini
+        start_idx = v * customers_per_vehicle
+        if v == vehicles - 1:
+            end_idx = len(customers)
+        else:
+            end_idx = (v + 1) * customers_per_vehicle
         
-        for v in range(vehicles):
-            depot_node = depot_assignment[v]
-            chromosome.append(f'D{depot_node}')
+        route_customers = customers[start_idx:end_idx]
+        
+        # Build route with energy consideration
+        current_energy = energy_capacity
+        current_node = depot_node
+        
+        for idx, c in enumerate(route_customers):
+            # Calculate distances
+            dist_to_customer = calculate_distance(coords, current_node, c)
+            energy_to_customer = dist_to_customer * consumption_rate
             
-            # Assign customer ke vehicle ini
-            start_idx = v * customers_per_vehicle
-            if v == vehicles - 1:
-                end_idx = len(customers)
+            # Look ahead: what's the minimum energy we'll need AFTER visiting this customer?
+            # We need energy to either reach depot or next customer then depot
+            if idx < len(route_customers) - 1:
+                # Not last customer - need energy to next customer
+                next_customer = route_customers[idx + 1]
+                dist_customer_to_next = calculate_distance(coords, c, next_customer)
+                dist_next_to_depot = calculate_distance(coords, next_customer, depot_node)
+                min_energy_reserve = min(
+                    calculate_distance(coords, c, depot_node) * consumption_rate,  # direct to depot
+                    (dist_customer_to_next + dist_next_to_depot) * consumption_rate  # via next customer
+                )
             else:
-                end_idx = (v + 1) * customers_per_vehicle
+                # Last customer - just need to reach depot
+                min_energy_reserve = calculate_distance(coords, c, depot_node) * consumption_rate
             
-            route_customers = customers[start_idx:end_idx]
-            for c in route_customers:
-                chromosome.append(f'C{c}')
+            # Total energy needed: go to customer + minimum reserve
+            total_energy_needed = energy_to_customer + min_energy_reserve
             
-            chromosome.append(f'D{depot_node}')
+            # Check if we need charging station
+            if current_energy < total_energy_needed and stations:
+                # Find nearest station and add it
+                nearest_station = find_nearest_station(coords, current_node, stations)
+                if nearest_station:
+                    dist_to_station = calculate_distance(coords, current_node, nearest_station)
+                    energy_to_station = dist_to_station * consumption_rate
+                    
+                    # Make sure we can reach the station
+                    if current_energy >= energy_to_station:
+                        route.append(nearest_station)
+                        current_energy = energy_capacity  # Fully recharge
+                        current_node = nearest_station
+                        
+                        # Recalculate from station to customer
+                        dist_to_customer = calculate_distance(coords, current_node, c)
+                        energy_to_customer = dist_to_customer * consumption_rate
             
-            # Tambah separator kecuali untuk vehicle terakhir
-            if v < vehicles - 1:
-                chromosome.append('|')
+            # Add customer to route
+            route.append(c)
+            current_energy -= energy_to_customer
+            current_node = c
+            
+            # Check if we need to recharge before going further
+            # (might need station even AFTER adding customer)
+            if idx < len(route_customers) - 1:
+                next_customer = route_customers[idx + 1]
+                dist_to_next = calculate_distance(coords, current_node, next_customer)
+                energy_to_next = dist_to_next * consumption_rate
+                dist_next_to_depot = calculate_distance(coords, next_customer, depot_node)
+                energy_next_to_depot = dist_next_to_depot * consumption_rate
+                total_energy_for_next = energy_to_next + energy_next_to_depot
+                
+                if current_energy < total_energy_for_next and stations:
+                    nearest_station = find_nearest_station(coords, current_node, stations)
+                    if nearest_station:
+                        dist_to_station = calculate_distance(coords, current_node, nearest_station)
+                        energy_to_station = dist_to_station * consumption_rate
+                        
+                        if current_energy >= energy_to_station:
+                            route.append(nearest_station)
+                            current_energy = energy_capacity
+                            current_node = nearest_station
+        
+        # Check if we can return to depot, if not add station
+        dist_to_depot = calculate_distance(coords, current_node, depot_node)
+        energy_to_depot = dist_to_depot * consumption_rate
+        
+        if current_energy < energy_to_depot and stations:
+            nearest_station = find_nearest_station(coords, current_node, stations)
+            if nearest_station:
+                route.append(nearest_station)
+                current_energy = energy_capacity
+        
+        # Return to depot
+        route.append(depot_node)
+        
+        # Convert route to chromosome format (integers only)
+        for node in route:
+            chromosome.append(node)
+        
+        # Add separator except for last vehicle
+        if v < vehicles - 1:
+            chromosome.append('|')
     
     return chromosome
 
@@ -179,12 +262,12 @@ def generate_initial_population(evrp_data, population_size=10):
 
 def print_chromosome(chromosome):
     """Cetak kromosom dalam format yang mudah dibaca."""
-    return ' '.join(chromosome)
+    return ' '.join(str(gene) for gene in chromosome)
 
 
 if __name__ == "__main__":
     # Parse file E-n32-k6-s7-edited.evrp
-    filepath = "e-cvrp_benchmark_instances-master/E-n32-k6-s7-edited.evrp"
+    filepath = "data/E-n32-k6-s7-edited.evrp"
     evrp_data = parse_evrp_file(filepath)
     
     print("=== Data EVRP ===")

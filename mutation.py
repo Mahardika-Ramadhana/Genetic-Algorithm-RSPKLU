@@ -1,10 +1,15 @@
 import random
-from utlis import euclidean_distance
 
-def apply_mutation(chromosome, depot_locations, customer_locations, mutation_probability=0.1, beta=0.2):
+def euclidean_distance(coord1, coord2):
+    """Calculate Euclidean distance between two coordinates"""
+    return ((coord1[0] - coord2[0]) ** 2 + (coord1[1] - coord2[1]) ** 2) ** 0.5
+
+def apply_mutation(chromosome, evrp_data, mutation_probability=0.1, beta=0.2):
     """
     Fungsi memilih antara inter-depot atau intra-depot
     parameter:
+        - chromosome: list dengan integer nodes dan '|' separators
+        - evrp_data: dict dengan 'depot', 'customers', 'stations', 'coords'
         - mutation_probability: probabilitas mutasi terjadi
         - beta: parameter batas untuk menentukan border customer
     """
@@ -12,16 +17,17 @@ def apply_mutation(chromosome, depot_locations, customer_locations, mutation_pro
     if random.random() > mutation_probability:
         return chromosome
     
-    border_customers = find_border_customers(chromosome, depot_locations, customer_locations, beta)
+    depot_locations = {d: evrp_data['coords'][d] for d in evrp_data['depot']}
+    customer_locations = {c: evrp_data['coords'][c] for c in evrp_data['customers']}
+    
+    border_customers = find_border_customers(chromosome, depot_locations, customer_locations, beta, evrp_data)
     
     if border_customers and random.random() < 0.7:
-        print("  [MUTASI] Melakukan Inter-Depot Mutation")
-        return inter_depot_mutation(chromosome, border_customers, depot_locations)
+        return inter_depot_mutation(chromosome, border_customers, depot_locations, evrp_data)
     else:
-        print("  [MUTASI] Melakukan Intra-Depot Mutation")
-        return intra_depot_mutation(chromosome)
+        return intra_depot_mutation(chromosome, evrp_data)
 
-def find_border_customers(chromosome, depot_locations, customer_locations, beta):
+def find_border_customers(chromosome, depot_locations, customer_locations, beta, evrp_data):
     """
     Temukan semua border customers dalam kromosom yang feasible untuk inter-depot mutation
     Sesuai paper: menggunakan formula (d_ax + d_ay) / Σ d_al ≥ r
@@ -46,7 +52,7 @@ def find_border_customers(chromosome, depot_locations, customer_locations, beta)
     
     return border_list
 
-def inter_depot_mutation(chromosome, border_customers, depot_locations):
+def inter_depot_mutation(chromosome, border_customers, depot_locations, evrp_data):
     """
     Melakukan inter-depot mutation pada kromosom
     Hanya untuk border customers yang sudah teridentifikasi
@@ -67,11 +73,11 @@ def inter_depot_mutation(chromosome, border_customers, depot_locations):
     print(f"  [INTER-DEPOT] Memindahkan {customer} dari {selected['current_depot']} ke {new_depot}")
     
     # Lakukan reassignment customer ke depot barucls
-    new_chromosome = reassign_customer_to_depot(chromosome, customer, selected['current_depot'], new_depot)
+    new_chromosome = reassign_customer_to_depot(chromosome, customer, selected['current_depot'], new_depot, evrp_data)
     
     return new_chromosome
 
-def intra_depot_mutation(chromosome):
+def intra_depot_mutation(chromosome, evrp_data):
     """
     Melakukan intra-depot mutation (dalam depot yang sama)
     Beberapa tipe mutasi yang mungkin: swap, inversion, insertion
@@ -79,7 +85,14 @@ def intra_depot_mutation(chromosome):
     routes = extract_routes(chromosome)
     
     # Filter route yang memiliki minimal 2 customers
-    valid_routes = [route for route in routes if len(route['customers']) >= 2]
+    customer_nodes = set(evrp_data['customers'])
+    valid_routes = []
+    for route in routes:
+        # Count actual customers (exclude stations)
+        actual_customers = [c for c in route['customers'] if c in customer_nodes]
+        if len(actual_customers) >= 2:
+            route['actual_customers'] = actual_customers
+            valid_routes.append(route)
     
     if not valid_routes:
         return chromosome  # Tidak ada route yang bisa dimutasi
@@ -136,7 +149,8 @@ def extract_routes(chromosome):
         if gene == '|':
             if current_route:
                 # Route harus mulai dan berakhir dengan depot yang sama
-                if len(current_route) >= 2 and current_route[0].startswith('D') and current_route[-1].startswith('D'):
+                if len(current_route) >= 2 and isinstance(current_route[0], int) and isinstance(current_route[-1], int):
+                    # Assume depot if not station (stations handled separately)
                     routes.append({
                         'depot': current_route[0],
                         'customers': current_route[1:-1],
@@ -147,7 +161,7 @@ def extract_routes(chromosome):
             current_route.append(gene)
     
     # Handle last route
-    if current_route and len(current_route) >= 2 and current_route[0].startswith('D') and current_route[-1].startswith('D'):
+    if current_route and len(current_route) >= 2 and isinstance(current_route[0], int) and isinstance(current_route[-1], int):
         routes.append({
             'depot': current_route[0],
             'customers': current_route[1:-1],
@@ -242,7 +256,7 @@ def get_candidate_depots(customer, depot_locations, customer_locations, beta):
     
     return candidate_depots
 
-def reassign_customer_to_depot(chromosome, customer, old_depot, new_depot):
+def reassign_customer_to_depot(chromosome, customer, old_depot, new_depot, evrp_data):
     """
     Reassign customer dari depot lama ke depot baru
     """
@@ -295,8 +309,7 @@ def euclidean_distance(coord1, coord2):
     """
     Menghitung Euclidean distance antara dua koordinat
     """
-    # This function is now provided by utlis.euclidean_distance. Keep wrapper for backward compatibility.
-    return euclidean_distance(coord1, coord2)
+    return ((coord1[0] - coord2[0])**2 + (coord1[1] - coord2[1])**2)**0.5
 
 # ===== CONTOH PENGGUNAAN =====
 
